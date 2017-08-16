@@ -1,11 +1,9 @@
 #!/usr/bin/env python
 
-#from matplotlib import pyplot as plt
-import cv2
 import time
 import numpy as np
 import math
-import keyboard
+import pygame
 
 
 class Simulation:
@@ -18,7 +16,8 @@ class Simulation:
         cy = self.bg_h/2
         for y in range(self.bg_h):
             for x in range(self.bg_w):
-                self.bg_img[y,x] = 1.0 / ( 1.0 + (math.sqrt((y - cy)**2 + (x - cx)**2 ) )/max_d)
+                d = math.sqrt((y - cy)**2 + (x - cx)**2 )
+                self.bg_img[y,x] = 1.0 / ( 1.0 + d**1.8/max_d) * 255
 
         self.x = (self.bg_w - self.view_w ) /2
         self.y = (self.bg_h - self.view_h ) /2
@@ -34,12 +33,12 @@ class Simulation:
         return self.bg_img[y:y+self.view_h, x:x+self.view_w]
 
     def keyboardInput(self,left,right,up,down):
-        self.x_input = right - left
+        self.x_input = left - right
         self.y_input = up - down
 
     def update(self):
         #acceleration
-        self.vx -= self.x_input * self.dt
+        self.vx += self.x_input * self.dt
         self.vy += self.y_input * self.dt
 
         #position update
@@ -52,26 +51,34 @@ class Simulation:
 
         print("[%f, %f]"%(self.vx,self.vy))
 
+def main():
+    sim = Simulation()
+    pygame.init ()
+    clock = pygame.time.Clock()
+    screenSurface = pygame.display.set_mode ((40, 40))
 
-sim = Simulation()
+    try:
+        while True:
+            keystate = pygame.key.get_pressed()
 
-cv2.namedWindow("sim")
-while True:
+            sim.keyboardInput(  keystate[pygame.K_LEFT],
+                                keystate[pygame.K_RIGHT],
+                                keystate[pygame.K_UP],
+                                keystate[pygame.K_DOWN])
+            sim.update()
 
-    sim.keyboardInput(  keyboard.is_pressed("left"),
-                        keyboard.is_pressed("right"),
-                        keyboard.is_pressed("up"),
-                        keyboard.is_pressed("down"))
-    sim.update()
+            f = sim.getFrame().copy()
+            f = np.transpose(f)
 
-    f = sim.getFrame()
-    cv2.imshow("sim",f)
-    # plt.clf()
-    # plt.imshow(f)
-    # plt.show(block=False)
-    # plt.pause(0.001)
-    time.sleep(1)
+            pygame.surfarray.blit_array(screenSurface,f)
+            pygame.display.flip()
+            pygame.event.pump()
+            clock.tick(30)
+    except KeyboardInterrupt:
+        pass
 
-    if keyboard.is_pressed('esc'):
-       break
-plt.close()
+    print("quiting")
+    pygame.quit()
+
+if __name__ == "__main__":
+    main()
