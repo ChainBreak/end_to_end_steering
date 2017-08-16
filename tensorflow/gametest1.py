@@ -96,7 +96,7 @@ class InputSmoother:
         else:
             self.y_smooth += math.copysign(y_step,y_error)
 
-        print("[%f, %f]"%(self.x_smooth,self.y_smooth))
+        #print("[%f, %f]"%(self.x_smooth,self.y_smooth))
 
     def getSmooth(self):
         return (self.x_smooth, self.y_smooth)
@@ -104,16 +104,38 @@ class InputSmoother:
 
 class NeuralNetworkController:
     def __init__(self,imgLength):
-        self.sess = tf.Session()
+        self.imgLength = imgLength
+        self.sess = tf.InteractiveSession()
 
-        self.imgPlaceholder = tf.placeholder(tf.float32,shape=[None,imgLength])
+        self.x = tf.placeholder(tf.float32,shape=[None,imgLength])
+        self.y_ = tf.placeholder(tf.float32,shape=[None,2])
+
+        self.W = tf.Variable(tf.zeros([imgLength,2]))
+        self.b = tf.Variable(tf.zeros([2]))
+
+        self.sess.run(tf.global_variables_initializer())
+
+        self.y = tf.matmul(self.x,self.W) + self.b
+
+        self.dist = tf.sqrt( tf.reduce_sum( tf.square( tf.subtract(self.y_,self.y)), reduction_indices=1))
+
+        self.train_step = tf.train.GradientDescentOptimizer(0.5).minimize(self.dist)
+
+    def getAction(self,img):
+        img = img.reshape(-1,self.imgLength)
+        action = self.y.eval(feed_dict={self.x: img})
+        return (action[0,0],action[0,1])
 
 
-
+    def train(self,img,x_input,y_input):
+        img = img.reshape(-1,self.imgLength)
+        correctAction = np.array([[x_input,y_input]])
+        return self.train_step.run(feed_dict={self.x: img, self.y_:correctAction})
 
 def main():
     sim = Simulation()
     inputSmoother = InputSmoother(0.5)
+    nn = NeuralNetworkController(40*40)
     pygame.init ()
     screenSurface = pygame.display.set_mode ((40, 40))
     fps = 30
@@ -130,10 +152,11 @@ def main():
             pygame.surfarray.blit_array(screenSurface,np.transpose(frame*255))
             pygame.display.flip()
 
+
             #wait for the frame to finish
             clock.tick(fps)
 
-            #show the frame to the nn
+
 
             #let pygame process the event queue
             pygame.event.pump()
@@ -146,8 +169,26 @@ def main():
                                         keystate[pygame.K_LEFT],
                                         keystate[pygame.K_RIGHT])
             inputSmoother.update(deltaTime)
-            x_input,y_input = inputSmoother.getSmooth()
 
+            #get the user control action for this frame
+            x_input_user,y_input_user = inputSmoother.getSmooth()
+
+            #get the control action from the nn for this frame
+            x_input_nn,y_input_nn = nn.getAction(frame)
+
+            print("[%f, %f]"%(x_input_nn,y_input_nn))
+
+            x_input_nn = np.clip(x_input_nn,-1.0,1.0)
+            y_input_nn = np.clip(y_input_nn,-1.0,1.0)
+
+            x_input = x_input_user + x_input_nn
+            y_input = y_input_user + y_input_nn
+
+            x_input = np.clip(x_input,-1.0,1.0)
+            y_input = np.clip(y_input,-1.0,1.0)
+
+            nn.train(frame,x_input,y_input)
+            print("[%f, %f]"%(x_input_nn,y_input))
             sim.input(x_input,y_input)
             sim.update(deltaTime)
 
@@ -157,7 +198,7 @@ def main():
     except KeyboardInterrupt:
         pass
 
-    print("quiting")
+    print("\nQuiting")
     pygame.quit()
 
 if __name__ == "__main__":
