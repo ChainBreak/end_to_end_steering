@@ -53,8 +53,8 @@ class Simulation:
         cd = math.sqrt(cdx**2 + cdy**2 )+0.0001
         nx = cdx/cd
         ny = cdy/cd
-        disturbance_x = nx * cd / max_d * self.speed / 3
-        disturbance_y = ny * cd / max_d * self.speed / 3
+        disturbance_x = nx * cd / max_d * self.speed / 2
+        disturbance_y = ny * cd / max_d * self.speed / 2
         #print(max_d)
         #print("accuracy %i%% "%((1-cd/max_d)*100))
 
@@ -150,26 +150,30 @@ def main():
     inputSmoother = InputSmoother(0.5)
     nn = NeuralNetworkController(40*40)
     pygame.init ()
-    screenSurface = pygame.display.set_mode ((40, 40))
+    screenSurface = pygame.display.set_mode ((400, 400))
     fps = 30
     deltaTime = 1.0/fps
     clock = pygame.time.Clock()
     try:
         while True:
 
-
             #get the latest frame form the Simulation
             frame = sim.getFrame()
 
             #show the frame to the user
-            pygame.surfarray.blit_array(screenSurface,np.transpose(frame*255))
-            pygame.display.flip()
 
+            surface = pygame.Surface((40,40))
+            pygame.surfarray.blit_array(surface,np.transpose(frame*255))
+            
+            surface = surface.convert()
+
+            surface = pygame.transform.scale(surface,(400,400),screenSurface)
+            #screenSurface.blit(surface,(0,0))
+
+            pygame.display.flip()
 
             #wait for the frame to finish
             clock.tick(fps)
-
-
 
             #let pygame process the event queue
             pygame.event.pump()
@@ -189,7 +193,7 @@ def main():
             #get the control action from the nn for this frame
             x_input_nn,y_input_nn = nn.getAction(frame)
 
-            print("[%f, %f]"%(x_input_nn,y_input_nn))
+            #print("[%f, %f]"%(x_input_nn,y_input_nn))
 
             x_input_nn = np.clip(x_input_nn,-1.0,1.0)
             y_input_nn = np.clip(y_input_nn,-1.0,1.0)
@@ -208,7 +212,7 @@ def main():
             #print("[%f, %f]"%(x_input,y_input))
 
             for e in pygame.event.get():
-                if e.type == pygame.KEYDOWN:    
+                if e.type == pygame.KEYDOWN:
                     if keystate[pygame.K_SPACE] :
                         sim.randomPosition()
 
