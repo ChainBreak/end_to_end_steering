@@ -5,7 +5,8 @@ import numpy as np
 import tensorflow as tf
 import math
 import pygame
-
+import random
+from matplotlib import pyplot as plt
 
 class Simulation:
     def __init__(self):
@@ -20,12 +21,13 @@ class Simulation:
                 d = math.sqrt((y - cy)**2 + (x - cx)**2 )
                 self.bg_img[y,x] = 1.0 / ( 1.0 + d**1.8/self.max_d)
 
-        self.x = (self.bg_w - self.view_w ) /3
-        self.y = (self.bg_h - self.view_h ) /3
+        self.x = (self.bg_w - self.view_w ) /2
+        self.y = (self.bg_h - self.view_h ) /2
         self.x_input = 0
         self.y_input = 0
         self.speed = 50 #pixels per second
         self.dt = 0.1
+        self.randomPosition()
 
     def getFrame(self):
         x = int(round(self.x))
@@ -35,6 +37,10 @@ class Simulation:
     def input(self,x_input,y_input):
         self.x_input = x_input
         self.y_input = y_input
+
+    def randomPosition(self):
+        self.x = random.uniform(0,self.bg_w - self.view_w)
+        self.y = random.uniform(0,self.bg_h - self.view_h)
 
     def update(self,deltaTime):
 
@@ -117,9 +123,16 @@ class NeuralNetworkController:
 
         self.y = tf.matmul(self.x,self.W) + self.b
 
-        self.dist = tf.sqrt( tf.reduce_sum( tf.square( tf.subtract(self.y_,self.y)), reduction_indices=1))
+        #self.y = tf.Print(self.y,[self.y],"Y: ")
 
-        self.train_step = tf.train.GradientDescentOptimizer(0.5).minimize(self.dist)
+        sub = tf.subtract(self.y_,self.y)
+
+        #sub = tf.Print(sub,[sub],"subtract: ")
+        self.dist = tf.sqrt( tf.reduce_sum( tf.square( sub), reduction_indices=1))
+
+        #self.dist = tf.Print(self.dist, [self.dist], "Dist: ")
+
+        self.train_step = tf.train.GradientDescentOptimizer(0.001).minimize(self.dist)
 
     def getAction(self,img):
         img = img.reshape(-1,self.imgLength)
@@ -181,17 +194,26 @@ def main():
             x_input_nn = np.clip(x_input_nn,-1.0,1.0)
             y_input_nn = np.clip(y_input_nn,-1.0,1.0)
 
+            #print("[%f, %f]"%(x_input_user,y_input_user))
             x_input = x_input_user + x_input_nn
             y_input = y_input_user + y_input_nn
+
 
             x_input = np.clip(x_input,-1.0,1.0)
             y_input = np.clip(y_input,-1.0,1.0)
 
-            nn.train(frame,x_input,y_input)
-            print("[%f, %f]"%(x_input_nn,y_input))
+            input_user = math.sqrt(x_input_user**2 + y_input_user**2)
+            if input_user > 0.0001 :
+                nn.train(frame,x_input,y_input)
+            #print("[%f, %f]"%(x_input,y_input))
+
+            for e in pygame.event.get():
+                if e.type == pygame.KEYDOWN:    
+                    if keystate[pygame.K_SPACE] :
+                        sim.randomPosition()
+
             sim.input(x_input,y_input)
             sim.update(deltaTime)
-
 
 
 
