@@ -19,7 +19,7 @@ class Simulation:
         for y in range(self.bg_h):
             for x in range(self.bg_w):
                 d = math.sqrt((y - cy)**2 + (x - cx)**2 )
-                self.bg_img[y,x] = 1.0 / ( 1.0 + d**1.8/self.max_d)
+                self.bg_img[y,x] = 1.0 / ( 1.0 + d**2/self.max_d)
 
         self.x = (self.bg_w - self.view_w ) /2
         self.y = (self.bg_h - self.view_h ) /2
@@ -53,8 +53,8 @@ class Simulation:
         cd = math.sqrt(cdx**2 + cdy**2 )+0.0001
         nx = cdx/cd
         ny = cdy/cd
-        disturbance_x = nx * cd / max_d * self.speed / 2
-        disturbance_y = ny * cd / max_d * self.speed / 2
+        disturbance_x = nx * cd / max_d * self.speed / 1.3
+        disturbance_y = ny * cd / max_d * self.speed / 1.3
         #print(max_d)
         #print("accuracy %i%% "%((1-cd/max_d)*100))
 
@@ -108,6 +108,8 @@ class InputSmoother:
         return (self.x_smooth, self.y_smooth)
 
 
+
+
 class NeuralNetworkController:
     def __init__(self,imgLength):
         self.imgLength = imgLength
@@ -145,15 +147,30 @@ class NeuralNetworkController:
         correctAction = np.array([[x_input,y_input]])
         return self.train_step.run(feed_dict={self.x: img, self.y_:correctAction})
 
+    def reinitialize(self):
+        self.sess.run(tf.global_variables_initializer())
+
+    def getWeights(self):
+        pass
+
 def main():
     sim = Simulation()
     inputSmoother = InputSmoother(0.5)
     nn = NeuralNetworkController(40*40)
     pygame.init ()
-    screenSurface = pygame.display.set_mode ((400, 400))
+    screenSurface = pygame.display.set_mode ((800, 400))
     fps = 30
     deltaTime = 1.0/fps
     clock = pygame.time.Clock()
+    nnEnabled = False
+    print("\n***Controls***\n\
+arrow keys: velocity input\n\
+         n: enable/disable neural network Controls\n\
+         c: reinitialize neural netowork weights\n\
+     space: random position\n")
+
+    print("Neural Network %s" % ["Disabled","Enabled"][nnEnabled])
+
     try:
         while True:
 
@@ -164,11 +181,11 @@ def main():
 
             surface = pygame.Surface((40,40))
             pygame.surfarray.blit_array(surface,np.transpose(frame*255))
-            
+
             surface = surface.convert()
 
-            surface = pygame.transform.scale(surface,(400,400),screenSurface)
-            #screenSurface.blit(surface,(0,0))
+            surface = pygame.transform.scale(surface,(400,400))
+            screenSurface.blit(surface,(0,0))
 
             pygame.display.flip()
 
@@ -190,31 +207,41 @@ def main():
             #get the user control action for this frame
             x_input_user,y_input_user = inputSmoother.getSmooth()
 
-            #get the control action from the nn for this frame
-            x_input_nn,y_input_nn = nn.getAction(frame)
+            x_input = x_input_user
+            y_input = y_input_user
 
-            #print("[%f, %f]"%(x_input_nn,y_input_nn))
+            if nnEnabled:
+                #get the control action from the nn for this frame
+                x_input_nn,y_input_nn = nn.getAction(frame)
 
-            x_input_nn = np.clip(x_input_nn,-1.0,1.0)
-            y_input_nn = np.clip(y_input_nn,-1.0,1.0)
+                #clip the output of the nn to between -1 and 1
+                x_input_nn = np.clip(x_input_nn,-1.0,1.0)
+                y_input_nn = np.clip(y_input_nn,-1.0,1.0)
 
-            #print("[%f, %f]"%(x_input_user,y_input_user))
-            x_input = x_input_user + x_input_nn
-            y_input = y_input_user + y_input_nn
+                #print("[%f, %f]"%(x_input_user,y_input_user))
+                x_input += x_input_nn
+                y_input += y_input_nn
 
 
-            x_input = np.clip(x_input,-1.0,1.0)
-            y_input = np.clip(y_input,-1.0,1.0)
+                x_input = np.clip(x_input,-1.0,1.0)
+                y_input = np.clip(y_input,-1.0,1.0)
 
-            input_user = math.sqrt(x_input_user**2 + y_input_user**2)
-            if input_user > 0.0001 :
-                nn.train(frame,x_input,y_input)
-            #print("[%f, %f]"%(x_input,y_input))
+                input_user = math.sqrt(x_input_user**2 + y_input_user**2)
+                if input_user > 0.0001 :
+                    nn.train(frame,x_input,y_input)
+
 
             for e in pygame.event.get():
                 if e.type == pygame.KEYDOWN:
                     if keystate[pygame.K_SPACE] :
                         sim.randomPosition()
+                        print("Random Position")
+                    elif keystate[pygame.K_c]:
+                        nn.reinitialize()
+                        print("Reinitialized Weights")
+                    elif keystate[pygame.K_n]:
+                        nnEnabled = not nnEnabled
+                        print("Neural Network %s" % ["Disabled","Enabled"][nnEnabled])
 
             sim.input(x_input,y_input)
             sim.update(deltaTime)
