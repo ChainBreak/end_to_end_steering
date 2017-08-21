@@ -111,14 +111,16 @@ class InputSmoother:
 
 
 class NeuralNetworkController:
-    def __init__(self,imgLength):
-        self.imgLength = imgLength
+    def __init__(self,imgSize):
+        self.imgSize = imgSize
+
+        self.imgLength = imgSize[0]*imgSize[1]
         self.sess = tf.InteractiveSession()
 
-        self.x = tf.placeholder(tf.float32,shape=[None,imgLength])
+        self.x = tf.placeholder(tf.float32,shape=[None,self.imgLength])
         self.y_ = tf.placeholder(tf.float32,shape=[None,2])
 
-        self.W = tf.Variable(tf.zeros([imgLength,2]))
+        self.W = tf.Variable(tf.zeros([self.imgLength,2]))
         self.b = tf.Variable(tf.zeros([2]))
 
         self.sess.run(tf.global_variables_initializer())
@@ -151,12 +153,14 @@ class NeuralNetworkController:
         self.sess.run(tf.global_variables_initializer())
 
     def getWeights(self):
-        pass
+        W = self.sess.run(self.W)
+        W = W.reshape(self.imgSize[0],self.imgSize[1],2)
+        return W
 
 def main():
     sim = Simulation()
-    inputSmoother = InputSmoother(0.5)
-    nn = NeuralNetworkController(40*40)
+    inputSmoother = InputSmoother(0.3)
+    nn = NeuralNetworkController((40,40))
     pygame.init ()
     screenSurface = pygame.display.set_mode ((800, 400))
     fps = 30
@@ -178,16 +182,38 @@ arrow keys: velocity input\n\
             frame = sim.getFrame()
 
             #show the frame to the user
-
             surface = pygame.Surface((40,40))
             pygame.surfarray.blit_array(surface,np.transpose(frame*255))
-
             surface = surface.convert()
-
             surface = pygame.transform.scale(surface,(400,400))
             screenSurface.blit(surface,(0,0))
 
+            W = nn.getWeights()
+
+            wMax = max(abs(W.min()),abs(W.max()))
+            if wMax > 0.0000001:
+                W = W/wMax * 127
+            W += 128
+
+            weightImg = np.ones([40,40,3])*255
+            weightImg[:,:,0] = np.transpose(W[:,:,0])
+            weightImg[:,:,1] = np.transpose(W[:,:,1])
+            dist = (weightImg[:,:,0] - 128)**2 + (weightImg[:,:,1] - 128)**2
+            dist = np.clip(dist,0,127**2)
+            weightImg[:,:,2] = np.sqrt( 127**2 - dist) + 128
+
+
+            weightSurf = pygame.Surface((40,40))
+            pygame.surfarray.blit_array(weightSurf,weightImg)
+            weightSurf = weightSurf.convert()
+            weightSurf = pygame.transform.scale(weightSurf,(400,400))
+            screenSurface.blit(weightSurf,(400,0))
+
+            #print(weightImg.shape)
+
             pygame.display.flip()
+
+
 
             #wait for the frame to finish
             clock.tick(fps)
