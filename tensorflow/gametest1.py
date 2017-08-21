@@ -19,7 +19,7 @@ class Simulation:
         for y in range(self.bg_h):
             for x in range(self.bg_w):
                 d = math.sqrt((y - cy)**2 + (x - cx)**2 )
-                self.bg_img[y,x] = 1.0 / ( 1.0 + d**2/self.max_d)
+                self.bg_img[y,x] = 1.0 / ( 1.0 + d**3/self.max_d)
 
         self.x = (self.bg_w - self.view_w ) /2
         self.y = (self.bg_h - self.view_h ) /2
@@ -180,7 +180,7 @@ arrow keys: velocity input\n\
 
             #get the latest frame form the Simulation
             frame = sim.getFrame()
-
+            
             #show the frame to the user
             surface = pygame.Surface((40,40))
             pygame.surfarray.blit_array(surface,np.transpose(frame*255))
@@ -247,7 +247,6 @@ arrow keys: velocity input\n\
                 #print("[%f, %f]"%(x_input_user,y_input_user))
                 x_input += x_input_nn
                 y_input += y_input_nn
-
 
                 x_input = np.clip(x_input,-1.0,1.0)
                 y_input = np.clip(y_input,-1.0,1.0)
