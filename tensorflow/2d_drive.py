@@ -100,7 +100,7 @@ class NeuralNetworkController:
 
         #self.dist = tf.Print(self.dist, [self.dist], "Dist: ")
 
-        self.train_step = tf.train.GradientDescentOptimizer(0.0001).minimize(self.dist)
+        self.train_step = tf.train.GradientDescentOptimizer(0.001).minimize(self.dist)
 
     def getAction(self,img):
         img = img.reshape(-1,self.imgLength)
@@ -134,6 +134,13 @@ def main():
     deltaTime =  1.0/fps
     clock = pygame.time.Clock()
     nnEnabled = True
+    print("\n***Controls***\n\
+arrow keys: velocity input\n\
+         n: enable/disable neural network Controls\n\
+         c: reinitialize neural netowork weights\n\
+     space: random position\n")
+
+    print("Neural Network %s" % ["Disabled","Enabled"][nnEnabled])
     try:
 
         while True:
@@ -142,14 +149,14 @@ def main():
 
             #get the latest frame form the Simulation
             frame = sim.getViewFrame()
-            #print(frame.shape)
-            frameT = np.transpose(frame,(1,0))
-            frameScaled = frame / 255
+
+            frameT = np.transpose(frame,(1,0))/1.0
+
             #print(frame.shape)
             #show the frame to the user
-            print(frameT.shape)
+
             surface = pygame.Surface(viewSize)
-            pygame.surfarray.blit_array(surface,frameT.astype('uint8'))
+            pygame.surfarray.blit_array(surface,frameT)
             surface = surface.convert()
             surface = pygame.transform.scale(surface,(400,400))
             screenSurface.blit(surface,(0,0))
@@ -169,6 +176,7 @@ def main():
             y_input = y_input_user
 
             if nnEnabled:
+                frameScaled = frame / 255.0
                 #get the control action from the nn for this frame
                 x_input_nn,y_input_nn = nn.getAction(frameScaled)
 
@@ -187,6 +195,19 @@ def main():
                 input_user = math.sqrt(x_input_user**2 + y_input_user**2)
                 if input_user > 0.0001 :
                     nn.train(frameScaled,x_input,y_input)
+
+            for e in pygame.event.get():
+                if e.type == pygame.KEYDOWN:
+                    keystate = pygame.key.get_pressed()
+                    if keystate[pygame.K_SPACE] :
+                        sim.randomPosition()
+                        print("Random Position")
+                    elif keystate[pygame.K_c]:
+                        nn.reinitialize()
+                        print("Reinitialized Weights")
+                    elif keystate[pygame.K_n]:
+                        nnEnabled = not nnEnabled
+                        print("Neural Network %s" % ["Disabled","Enabled"][nnEnabled])
 
             sim.input(x_input,y_input)
             sim.update(deltaTime)
