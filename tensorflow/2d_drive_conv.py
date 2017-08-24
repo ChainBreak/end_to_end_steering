@@ -85,13 +85,14 @@ class NeuralNetworkController:
         self.y_ = tf.placeholder(tf.float32,shape=[None,1])
 
         #First Layer
-        self.W_conv1 = self.weight_variable([5,5,3,16])
+        self.W_conv1 = self.weight_variable([9,9,3,16])
         self.b_conv1 = self.bias_variable([16])
 
         self.h_conv1 = tf.nn.relu( self.conv2d(self.x, self.W_conv1) + self.b_conv1)
         #self.h_conv1 =self.conv2d(self.x, self.W_conv1) + self.b_conv1
 
-        self.h_pool1 = self.ave_pool_10x10(self.h_conv1)
+        self.h_pool1 = self.blur_pool(self.h_conv1)
+        self.h_pool1 = self.blur_pool(self.h_pool1)
         #self.h_pool1 = self.max_pool_2x2(self.h_conv1)
         # #Second Layer
         # self.W_conv2 = self.weight_variable([5,5,16,32])
@@ -103,28 +104,30 @@ class NeuralNetworkController:
 
         #self.h_pool2_flat = tf.reshape(self.h_pool2, [-1, 16*16*32])
 
-        self.h_pool2_flat = tf.reshape(self.h_pool1, [-1, 16*16*16])
+        self.h_pool2_flat = tf.reshape(self.h_pool1, [-1, 38*38*16])
 
         #Fourth Layer Fully Connected Readout
         #self.W_fc2 = self.weight_variable([16*16*32,1])
-        self.W_fc2 = self.weight_variable([16*16*16,1])
+        self.W_fc2 = self.weight_variable([38*38*16,1])
         self.b_fc2 = self.bias_variable([1])
 
-        self.sess.run(tf.global_variables_initializer())
+
 
         self.y_conv = tf.matmul(self.h_pool2_flat, self.W_fc2) + self.b_fc2
 
         #self.y = tf.Print(self.y,[self.y],"Y: ")
-        y_conv = tf.Print(self.y_conv,[self.y_conv],"y_conv",summarize=5)
-        sub = tf.subtract(self.y_,y_conv)
+        #y_conv = tf.Print(self.y_conv,[self.y_conv],"y_conv",summarize=5)
+        sub = tf.subtract(self.y_,self.y_conv)
 
-        sub = tf.Print(sub,[sub],"subtract: ",summarize=5)
+        #sub = tf.Print(sub,[sub],"subtract: ",summarize=5)
         self.dist = tf.sqrt( tf.reduce_sum( tf.square( sub), reduction_indices=1))
 
-        self.dist = tf.Print(self.dist, [self.dist], "Dist: ",summarize=5)
+        #self.dist = tf.Print(self.dist, [self.dist], "Dist: ",summarize=5)
 
-        self.train_step = tf.train.GradientDescentOptimizer(0.04).minimize(self.dist)
-
+        self.loss = tf.reduce_mean(self.dist)
+        #self.loss = tf.Print(self.loss,[self.loss],"Loss")
+        self.train_step = tf.train.AdamOptimizer(0.0001).minimize(self.loss)
+        self.sess.run(tf.global_variables_initializer())
 
 
     def weight_variable(self,shape):
@@ -132,23 +135,23 @@ class NeuralNetworkController:
         return tf.Variable(initial)
 
     def bias_variable(self,shape):
-        initial = tf.constant(0.1, shape=shape)
+        initial = tf.constant(0.2, shape=shape)
         return tf.Variable(initial)
 
     def conv2d(self,x,W):
         # https://www.tensorflow.org/api_docs/python/tf/nn/conv2d
-        return tf.nn.conv2d(x,W, strides=[1,1,1,1], padding='SAME')
+        return tf.nn.conv2d(x,W, strides=[1,1,1,1], padding='VALID')
 
     def max_pool_2x2(self,x):
-        return tf.nn.max_pool(x, ksize=[1,2,2,1], strides=[1,2,2,1], padding='SAME')
+        return tf.nn.max_pool(x, ksize=[1,2,2,1], strides=[1,2,2,1], padding='VALID')
 
-    def ave_pool_10x10(self,x):
-        return tf.nn.max_pool(x, ksize=[1,10,10,1], strides=[1,4,4,1], padding='SAME')
+    def blur_pool(self,x):
+        return tf.nn.avg_pool(x, ksize=[1,10,10,1], strides=[1,1,1,1], padding='VALID')
 
     def getAction(self,img):
         img = img.reshape(-1,64,64,3)
-        action = self.y_conv.eval(feed_dict={self.x: img})
-        return (action[0])
+        action,activations = self.sess.run([self.y_conv, self.h_conv1],feed_dict={self.x: img})
+        return (action[0],activations)
 
 
     def train(self,frameTensor,actionTensor):
@@ -160,14 +163,16 @@ class NeuralNetworkController:
     def getWeights(self):
         W = self.sess.run(self.W_conv1)
         #[5,5,3,16]
-        W_img = np.zeros([6*4,6*4,3])
+        W_img = np.zeros([10*4,10*4,3])
 
         for row in range(4):
             for col in range(4):
                 filterIndex = row*4 + col
-                W_img[row*6+1:row*6+6,col*6+1:col*6+6,:] = W[:,:,:,filterIndex]
+                W_img[row*10+1:row*10+10,col*10+1:col*10+10,:] = W[:,:,:,filterIndex]
 
         return W_img
+
+
 
 class FrameActionQueue():
     def __init__(self,maxLength):
@@ -189,14 +194,36 @@ class FrameActionQueue():
     def getActionTensor(self):
         return  np.concatenate(self.actionQueue,axis=0)
 
+def activation2surface(activations):
+    if len(activations.shape) == 4:
+        activations = activations[0,:,:,:]
+    h,w,c = activations.shape
+    gridSize = int(math.ceil(math.sqrt(c)))
+    img = np.zeros([(h+1)*gridSize,(w+1)*gridSize])
+    for row in range(gridSize):
+        for col in range(gridSize):
+            i = row*gridSize + col
+            if i < c:
+                img[row*(h+1):(row+1)*(h+1)-1, col*(w+1):(col+1)*(w+1)-1] = activations[:,:,i]
+
+    wMax = max(abs(img.min()),abs(img.max()))
+    if wMax > 0.99:
+        img = img/wMax
+    img *= 255
+
+    surface = pygame.Surface(img.shape[0:2])
+    pygame.surfarray.blit_array(surface,np.transpose(img)*1.0)
+    surface = surface.convert()
+    return surface
+
 
 def main():
     pygame.init()
 
     viewSize = (64,64)
-    screenSurface = pygame.display.set_mode ((800,400))
+    screenSurface = pygame.display.set_mode ((1200,400))
 
-    sim = DrivingSimulator2D('track2.png',viewSize)
+    sim = DrivingSimulator2D('track4.png',viewSize)
     inputSmoother = InputSmoother(0.5)
     nn = NeuralNetworkController(viewSize)
     faq = FrameActionQueue(5)
@@ -230,11 +257,12 @@ arrow keys: velocity input\n\
 
             W = nn.getWeights()
             wMax = max(abs(W.min()),abs(W.max()))
-            if wMax > 0.99:
+            if wMax > 0.0001:
                 W = W/wMax
-            W *= 127
+                W *= 127
             W += 128
-            surface = pygame.Surface((24,24))
+
+            surface = pygame.Surface(W.shape[0:2])
             pygame.surfarray.blit_array(surface,np.transpose(W,(1,0,2))*1.0)
             surface = surface.convert()
             surface = pygame.transform.scale(surface,(400,400))
@@ -250,13 +278,16 @@ arrow keys: velocity input\n\
             #get the user control action for this frame
             x_input_user,y_input_user = inputSmoother.getSmooth()
 
-            x_input = x_input_user
+            x_input = x_input_user*1.5
 
 
             if nnEnabled:
                 frameScaled = frame / 255.0
                 #get the control action from the nn for this frame
-                x_input_nn= nn.getAction(frameScaled)
+                x_input_nn,activations= nn.getAction(frameScaled)
+                actSurf = activation2surface(activations)
+                actSurf = pygame.transform.scale(actSurf,(400,400))
+                screenSurface.blit(actSurf,(800,0))
                 #print(x_input_nn)
                 #clip the output of the nn to between -1 and 1
                 x_input_nn = np.clip(x_input_nn,-1.0,1.0)
