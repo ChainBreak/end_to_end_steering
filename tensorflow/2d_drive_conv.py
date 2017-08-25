@@ -85,34 +85,35 @@ class NeuralNetworkController:
         self.y_ = tf.placeholder(tf.float32,shape=[None,1])
 
         #First Layer
-        self.W_conv1 = self.weight_variable([9,9,3,16])
-        self.b_conv1 = self.bias_variable([16])
+        self.W_conv1 = self.weight_variable([5,5,3,36])
+        self.b_conv1 = self.bias_variable([36])
 
         self.h_conv1 = tf.nn.relu( self.conv2d(self.x, self.W_conv1) + self.b_conv1)
         self.h_pool1 = self.max_pool_2x2(self.h_conv1)
 
         # #Second Layer
-        self.W_conv2 = self.weight_variable([1,1,16,1])
-        self.b_conv2 = self.bias_variable([1])
+        self.W_conv2 = self.weight_variable([3,3,36,16])
+        self.b_conv2 = self.bias_variable([16])
         #
         self.h_conv2 = tf.nn.relu( self.conv2d(self.h_pool1, self.W_conv2) + self.b_conv2)
         #self.h_conv2 =  self.conv2d(self.h_pool1, self.W_conv2) + self.b_conv2
 
-        self.h_pool2 = self.blur_pool(self.h_conv2)
+        self.h_pool2 = self.max_pool_2x2(self.h_conv2)
+        self.h_pool2 = self.blur_pool(self.h_pool2)
         self.h_pool2 = self.blur_pool(self.h_pool2)
 
-        imgLength = 20*20*1
+        imgLength = 10*10*16
         self.h_pool2_flat = tf.reshape(self.h_pool2, [-1, imgLength])
 
         #third layer fully Connected
-        self.W_fc1 = self.weight_variable([imgLength,imgLength])
-        self.b_fc1 = self.bias_variable([1])
+        self.W_fc1 = self.weight_variable([imgLength,400])
+        self.b_fc1 = self.bias_variable([400])
 
         self.h_fc1 = tf.nn.relu(tf.matmul(self.h_pool2_flat, self.W_fc1) + self.b_fc1)
 
         #Fourth Layer Fully Connected Readout
         #self.W_fc2 = self.weight_variable([16*16*32,1])
-        self.W_fc2 = self.weight_variable([imgLength,1])
+        self.W_fc2 = self.weight_variable([400,1])
         self.b_fc2 = self.bias_variable([1])
 
 
@@ -130,7 +131,7 @@ class NeuralNetworkController:
 
         self.loss = tf.reduce_mean(self.dist)
         #self.loss = tf.Print(self.loss,[self.loss],"Loss")
-        self.train_step = tf.train.AdamOptimizer(0.0001).minimize(self.loss)
+        self.train_step = tf.train.AdamOptimizer(0.00001).minimize(self.loss)
         self.sess.run(tf.global_variables_initializer())
 
 
@@ -150,7 +151,7 @@ class NeuralNetworkController:
         return tf.nn.max_pool(x, ksize=[1,2,2,1], strides=[1,2,2,1], padding='VALID')
 
     def blur_pool(self,x):
-        return tf.nn.avg_pool(x, ksize=[1,5,5,1], strides=[1,1,1,1], padding='VALID')
+        return tf.nn.avg_pool(x, ksize=[1,3,3,1], strides=[1,1,1,1], padding='VALID')
 
     def getAction(self,img):
         img = img.reshape(-1,64,64,3)
@@ -230,7 +231,7 @@ def main():
     sim = DrivingSimulator2D('track5.png',viewSize)
     inputSmoother = InputSmoother(1.0)
     nn = NeuralNetworkController(viewSize)
-    faq = FrameActionQueue(10)
+    faq = FrameActionQueue(30)
 
     fps = 30
     deltaTime =  1.0/fps
