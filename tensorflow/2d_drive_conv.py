@@ -118,7 +118,7 @@ class NeuralNetworkController:
 
 
 
-        self.y_conv = tf.matmul(self.h_fc1, self.W_fc2) + self.b_fc2
+        self.y_conv = tf.matmul(self.h_fc1, self.W_fc2) #+ self.b_fc2
 
         #self.y = tf.Print(self.y,[self.y],"Y: ")
         #y_conv = tf.Print(self.y_conv,[self.y_conv],"y_conv",summarize=5)
@@ -228,7 +228,7 @@ def main():
     viewSize = (64,64)
     screenSurface = pygame.display.set_mode ((1600,400))
 
-    sim = DrivingSimulator2D('track5.png',viewSize)
+    sim = DrivingSimulator2D('track6.png',viewSize)
     inputSmoother = InputSmoother(1.0)
     nn = NeuralNetworkController(viewSize)
     faq = FrameActionQueue(30)
