@@ -20,7 +20,7 @@ class DrivingSimulator2D:
         self.speed = 30 #pixels per second
         self.dir = 00 #degrees
         self.turnRate = 00 #degrees per second
-        self.maxTurnRate = 45
+        self.maxTurnRate = 60
 
     def input(self,x_input):
         self.turnRate = -self.maxTurnRate * x_input
@@ -85,35 +85,35 @@ class NeuralNetworkController:
         self.y_ = tf.placeholder(tf.float32,shape=[None,1])
 
         #First Layer
-        self.W_conv1 = self.weight_variable([5,5,3,36])
-        self.b_conv1 = self.bias_variable([36])
+        self.W_conv1 = self.weight_variable([5,5,3,25])
+        self.b_conv1 = self.bias_variable([25])
 
         self.h_conv1 = tf.nn.relu( self.conv2d(self.x, self.W_conv1) + self.b_conv1)
         self.h_pool1 = self.max_pool_2x2(self.h_conv1)
 
         # #Second Layer
-        self.W_conv2 = self.weight_variable([3,3,36,16])
-        self.b_conv2 = self.bias_variable([16])
+        self.W_conv2 = self.weight_variable([3,3,25,36])
+        self.b_conv2 = self.bias_variable([36])
         #
         self.h_conv2 = tf.nn.relu( self.conv2d(self.h_pool1, self.W_conv2) + self.b_conv2)
         #self.h_conv2 =  self.conv2d(self.h_pool1, self.W_conv2) + self.b_conv2
 
         self.h_pool2 = self.max_pool_2x2(self.h_conv2)
         self.h_pool2 = self.blur_pool(self.h_pool2)
-        self.h_pool2 = self.blur_pool(self.h_pool2)
+        #self.h_pool2 = self.blur_pool(self.h_pool2)
 
-        imgLength = 10*10*16
+        imgLength = 12*12*36
         self.h_pool2_flat = tf.reshape(self.h_pool2, [-1, imgLength])
 
         #third layer fully Connected
-        self.W_fc1 = self.weight_variable([imgLength,400])
-        self.b_fc1 = self.bias_variable([400])
+        self.W_fc1 = self.weight_variable([imgLength,1024])
+        self.b_fc1 = self.bias_variable([1024])
 
         self.h_fc1 = tf.nn.relu(tf.matmul(self.h_pool2_flat, self.W_fc1) + self.b_fc1)
 
         #Fourth Layer Fully Connected Readout
         #self.W_fc2 = self.weight_variable([16*16*32,1])
-        self.W_fc2 = self.weight_variable([400,1])
+        self.W_fc2 = self.weight_variable([1024,1])
         self.b_fc2 = self.bias_variable([1])
 
 
@@ -203,18 +203,21 @@ def activation2surface(activations):
     if len(activations.shape) == 4:
         activations = activations[0,:,:,:]
     h,w,c = activations.shape
+    h += 1
+    w += 1
     gridSize = int(math.ceil(math.sqrt(c)))
     img = np.zeros([(h+1)*gridSize,(w+1)*gridSize])
     for row in range(gridSize):
         for col in range(gridSize):
             i = row*gridSize + col
             if i < c:
-                img[row*(h+1):(row+1)*(h+1)-1, col*(w+1):(col+1)*(w+1)-1] = activations[:,:,i]
+                act = activations[:,:,i]
+                wMax = max(abs(act.min()),abs(act.max()))
+                if wMax > 0.00001:
+                    act = act/wMax
+                    act *= 255
+                img[row*h:(row+1)*h-1, col*w:(col+1)*w-1] = act
 
-    wMax = max(abs(img.min()),abs(img.max()))
-    if wMax > 0.00001:
-        img = img/wMax
-        img *= 255
 
     surface = pygame.Surface(img.shape[0:2])
     pygame.surfarray.blit_array(surface,np.transpose(img)*1.0)
@@ -228,8 +231,8 @@ def main():
     viewSize = (64,64)
     screenSurface = pygame.display.set_mode ((1600,400))
 
-    sim = DrivingSimulator2D('track6.png',viewSize)
-    inputSmoother = InputSmoother(1.0)
+    sim = DrivingSimulator2D('track7.png',viewSize)
+    inputSmoother = InputSmoother(0.5)
     nn = NeuralNetworkController(viewSize)
     faq = FrameActionQueue(30)
 
