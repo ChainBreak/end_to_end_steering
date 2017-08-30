@@ -20,7 +20,7 @@ class DrivingSimulator2D:
         self.speed = 30 #pixels per second
         self.dir = 00 #degrees
         self.turnRate = 00 #degrees per second
-        self.maxTurnRate = 60
+        self.maxTurnRate = 90
 
     def input(self,x_input):
         self.turnRate = -self.maxTurnRate * x_input
@@ -83,42 +83,47 @@ class NeuralNetworkController:
         #[batches,height,width,chanels]
         self.x = tf.placeholder(tf.float32,shape=[None,64,64,3])
         self.y_ = tf.placeholder(tf.float32,shape=[None,1])
+        self.keep_prob = tf.placeholder(tf.float32)
 
         #First Layer
         self.W_conv1 = self.weight_variable([5,5,3,25])
         self.b_conv1 = self.bias_variable([25])
 
-        self.h_conv1 = tf.nn.relu( self.conv2d(self.x, self.W_conv1) + self.b_conv1)
+        self.h_conv1 = self.leaky_relu( self.conv2d(self.x, self.W_conv1) + self.b_conv1)
         self.h_pool1 = self.max_pool_2x2(self.h_conv1)
 
         # #Second Layer
-        self.W_conv2 = self.weight_variable([3,3,25,36])
-        self.b_conv2 = self.bias_variable([36])
+        self.W_conv2 = self.weight_variable([3,3,25,64])
+        self.b_conv2 = self.bias_variable([64])
         #
-        self.h_conv2 = tf.nn.relu( self.conv2d(self.h_pool1, self.W_conv2) + self.b_conv2)
+        self.h_conv2 = self.leaky_relu( self.conv2d(self.h_pool1, self.W_conv2) + self.b_conv2)
         #self.h_conv2 =  self.conv2d(self.h_pool1, self.W_conv2) + self.b_conv2
 
-        self.h_pool2 = self.max_pool_2x2(self.h_conv2)
+        #self.h_pool2 = self.max_pool_2x2(self.h_conv2)
+        self.h_pool2 = self.blur_pool(self.h_conv2)
         self.h_pool2 = self.blur_pool(self.h_pool2)
-        #self.h_pool2 = self.blur_pool(self.h_pool2)
+        self.h_pool2 = self.blur_pool(self.h_pool2)
+        self.h_pool2 = self.blur_pool(self.h_pool2)
 
-        imgLength = 12*12*36
+        n,h,w,c = self.h_pool2.get_shape()
+        imgLength = int(h*w*c)
         self.h_pool2_flat = tf.reshape(self.h_pool2, [-1, imgLength])
 
         #third layer fully Connected
-        self.W_fc1 = self.weight_variable([imgLength,1024])
-        self.b_fc1 = self.bias_variable([1024])
+        fc1_size = int(c) * 4
+        self.W_fc1 = self.weight_variable([imgLength,fc1_size])
+        self.b_fc1 = self.bias_variable([fc1_size])
 
-        self.h_fc1 = tf.nn.relu(tf.matmul(self.h_pool2_flat, self.W_fc1) + self.b_fc1)
+        self.h_fc1 = self.leaky_relu(tf.matmul(self.h_pool2_flat, self.W_fc1) + self.b_fc1)
 
+        #self.h_fc1 = tf.matmul(self.h_pool2_flat, self.W_fc1) + self.b_fc1
+        self.h_drop = tf.nn.dropout(self.h_fc1,self.keep_prob)
         #Fourth Layer Fully Connected Readout
         #self.W_fc2 = self.weight_variable([16*16*32,1])
-        self.W_fc2 = self.weight_variable([1024,1])
+        self.W_fc2 = self.weight_variable([fc1_size,1])
         self.b_fc2 = self.bias_variable([1])
 
-
-
-        self.y_conv = tf.matmul(self.h_fc1, self.W_fc2) #+ self.b_fc2
+        self.y_conv = tf.matmul(self.h_drop, self.W_fc2) #+ self.b_fc2
 
         #self.y = tf.Print(self.y,[self.y],"Y: ")
         #y_conv = tf.Print(self.y_conv,[self.y_conv],"y_conv",summarize=5)
@@ -146,6 +151,10 @@ class NeuralNetworkController:
     def conv2d(self,x,W):
         # https://www.tensorflow.org/api_docs/python/tf/nn/conv2d
         return tf.nn.conv2d(x,W, strides=[1,1,1,1], padding='VALID')
+    @staticmethod
+    def leaky_relu(x):
+        alpha = 0.001
+        return tf.maximum(x,x*alpha)
 
     def max_pool_2x2(self,x):
         return tf.nn.max_pool(x, ksize=[1,2,2,1], strides=[1,2,2,1], padding='VALID')
@@ -155,12 +164,12 @@ class NeuralNetworkController:
 
     def getAction(self,img):
         img = img.reshape(-1,64,64,3)
-        return self.sess.run([self.y_conv, self.h_conv1, self.h_conv2, self.h_pool2],feed_dict={self.x: img})
+        return self.sess.run([self.y_conv, self.h_conv1, self.h_conv2, self.h_pool2],feed_dict={self.x: img, self.keep_prob:1.0})
 
 
 
     def train(self,frameTensor,actionTensor):
-        return self.train_step.run(feed_dict={self.x: frameTensor, self.y_:actionTensor})
+        return self.train_step.run(feed_dict={self.x: frameTensor, self.y_:actionTensor, self.keep_prob:1.0})
 
     def reinitialize(self):
         self.sess.run(tf.global_variables_initializer())
@@ -260,6 +269,7 @@ arrow keys: velocity input\n\
             pygame.surfarray.blit_array(surface,np.transpose(frame,(1,0,2))*1.0)
             surface = surface.convert()
             surface = pygame.transform.scale(surface,(400,400))
+            pygame.draw.line(surface,0xff0000,(200,200),(200,400))
             screenSurface.blit(surface,(0,0))
 
 
