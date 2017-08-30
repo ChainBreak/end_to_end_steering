@@ -82,7 +82,7 @@ class NeuralNetworkController:
         self.sess = tf.InteractiveSession()
         #[batches,height,width,chanels]
         self.x = tf.placeholder(tf.float32,shape=[None,64,64,3])
-        self.y_ = tf.placeholder(tf.float32,shape=[None,1])
+        self.y_ = tf.placeholder(tf.float32,shape=[None,2])
         self.keep_prob = tf.placeholder(tf.float32)
 
         #First Layer
@@ -120,10 +120,10 @@ class NeuralNetworkController:
         self.h_drop = tf.nn.dropout(self.h_fc1,self.keep_prob)
         #Fourth Layer Fully Connected Readout
         #self.W_fc2 = self.weight_variable([16*16*32,1])
-        self.W_fc2 = self.weight_variable([fc1_size,1])
-        self.b_fc2 = self.bias_variable([1])
+        self.W_fc2 = self.weight_variable([fc1_size,2])
+        self.b_fc2 = self.bias_variable([2])
 
-        self.y_conv = tf.matmul(self.h_drop, self.W_fc2) #+ self.b_fc2
+        self.y_conv = tf.matmul(self.h_drop, self.W_fc2) + self.b_fc2
 
         #self.y = tf.Print(self.y,[self.y],"Y: ")
         #y_conv = tf.Print(self.y_conv,[self.y_conv],"y_conv",summarize=5)
@@ -136,7 +136,7 @@ class NeuralNetworkController:
 
         self.loss = tf.reduce_mean(self.dist)
         #self.loss = tf.Print(self.loss,[self.loss],"Loss")
-        self.train_step = tf.train.AdamOptimizer(0.00001).minimize(self.loss)
+        self.train_step = tf.train.AdamOptimizer(0.00002).minimize(self.loss)
         self.sess.run(tf.global_variables_initializer())
 
 
@@ -296,7 +296,7 @@ arrow keys: velocity input\n\
             #get the user control action for this frame
             x_input_user,y_input_user = inputSmoother.getSmooth()
 
-            x_input = x_input_user*1.5
+            turn = x_input_user*1.5
 
 
             if nnEnabled:
@@ -314,17 +314,24 @@ arrow keys: velocity input\n\
                 actSurf = activation2surface(acts3)
                 actSurf = pygame.transform.scale(actSurf,(400,400))
                 screenSurface.blit(actSurf,(1200,0))
-                #print(x_input_nn)
-                #clip the output of the nn to between -1 and 1
-                x_input_nn = np.clip(action[0],-1.0,1.0)
 
-                #print("[%f, %f]"%(x_input_user,y_input_user))
-                x_input += x_input_nn
 
-                x_input = np.clip(x_input,-1.0,1.0)
+                actX = max(action[0,0],0)
+                actY = action[0,1]
+
+                print(math.sqrt(actX**2 + actY**2))
+
+                turn_nn = math.atan2(actY,actX)/(math.pi/4)
+                #print("[%f, %f] %f"%(actX,actY,turn_nn))
+
+                turn += turn_nn
+                turn = np.clip(turn,-1,1)
+
 
                 if abs(x_input_user) > 0.0001 :
-                    faq.append(frameScaled,x_input)
+                    correctAction = np.array([math.cos(turn*(math.pi/4)),math.sin(turn*(math.pi/4))])
+
+                    faq.append(frameScaled,correctAction)
                     frameTensor = faq.getFrameTensor()
                     actionTensor = faq.getActionTensor()
                     #print(actionTensor)
@@ -344,7 +351,7 @@ arrow keys: velocity input\n\
                         nnEnabled = not nnEnabled
                         print("Neural Network %s" % ["Disabled","Enabled"][nnEnabled])
 
-            sim.input(x_input)
+            sim.input(turn)
             sim.update(deltaTime)
 
 
