@@ -5,6 +5,7 @@ import cv2
 import pygame
 import math
 import tensorflow as tf
+from randomWeightedRecal import RandomWeightedRecal
 
 class DrivingSimulator2D:
 
@@ -240,10 +241,11 @@ def main():
     viewSize = (64,64)
     screenSurface = pygame.display.set_mode ((1600,400))
 
-    sim = DrivingSimulator2D('track7.png',viewSize)
+    sim = DrivingSimulator2D('track8.png',viewSize)
     inputSmoother = InputSmoother(0.5)
     nn = NeuralNetworkController(viewSize)
     faq = FrameActionQueue(30)
+    rr = RandomWeightedRecal(1000)
 
     fps = 30
     deltaTime =  1.0/fps
@@ -319,7 +321,7 @@ arrow keys: velocity input\n\
                 actX = max(action[0,0],0)
                 actY = action[0,1]
 
-                print(math.sqrt(actX**2 + actY**2))
+                #print(math.sqrt(actX**2 + actY**2))
 
                 turn_nn = math.atan2(actY,actX)/(math.pi/4)
                 #print("[%f, %f] %f"%(actX,actY,turn_nn))
@@ -331,11 +333,20 @@ arrow keys: velocity input\n\
                 if abs(x_input_user) > 0.0001 :
                     correctAction = np.array([math.cos(turn*(math.pi/4)),math.sin(turn*(math.pi/4))])
 
-                    faq.append(frameScaled,correctAction)
-                    frameTensor = faq.getFrameTensor()
-                    actionTensor = faq.getActionTensor()
-                    #print(actionTensor)
-                    nn.train(frameTensor,actionTensor)
+                    if len(rr.weightedItemList) > 30:
+                        frameTensor = np.array([frameScaled])
+
+                        actionTensor = np.array([correctAction])
+                        frameActionList = rr.getWeightedRandomList(29)
+                        for oldFrame, oldAction in frameActionList:
+
+                            frameTensor = np.append(frameTensor, oldFrame,axis=0)
+                            actionTensor = np.append(actionTensor, oldAction,axis=0)
+                        print(frameTensor.shape)
+                        #print(actionTensor)
+                        nn.train(frameTensor,actionTensor)
+
+                    rr.addItem(abs(x_input_user),( np.array([frameScaled]), np.array([correctAction]) ))
 
 
             for e in pygame.event.get():
