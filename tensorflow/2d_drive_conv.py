@@ -87,35 +87,32 @@ class NeuralNetworkController:
         self.keep_prob = tf.placeholder(tf.float32)
 
         #First Layer
-        self.W_conv1 = self.weight_variable([5,5,3,25])
-        self.b_conv1 = self.bias_variable([25])
+        self.W_conv1 = self.weight_variable([5,5,3,24])
+        self.b_conv1 = self.bias_variable([24])
+        self.h_conv1 = self.leaky_relu( self.conv2d(self.x, self.W_conv1,2) + self.b_conv1)
 
-        self.h_conv1 = self.leaky_relu( self.conv2d(self.x, self.W_conv1) + self.b_conv1)
-        self.h_pool1 = self.max_pool_2x2(self.h_conv1)
+        #Second Layer
+        self.W_conv2 = self.weight_variable([5,5,24,36])
+        self.b_conv2 = self.bias_variable([36])
+        self.h_conv2 = self.leaky_relu( self.conv2d(self.h_conv1, self.W_conv2,2) + self.b_conv2)
 
-        # #Second Layer
-        self.W_conv2 = self.weight_variable([3,3,25,64])
-        self.b_conv2 = self.bias_variable([64])
-        #
-        self.h_conv2 = self.leaky_relu( self.conv2d(self.h_pool1, self.W_conv2) + self.b_conv2)
-        #self.h_conv2 =  self.conv2d(self.h_pool1, self.W_conv2) + self.b_conv2
+        #Third Layer
+        self.W_conv3 = self.weight_variable([5,5,36,48])
+        self.b_conv3 = self.bias_variable([48])
+        self.h_conv3 = self.leaky_relu( self.conv2d(self.h_conv2, self.W_conv3,2) + self.b_conv3)
 
-        #self.h_pool2 = self.max_pool_2x2(self.h_conv2)
-        self.h_pool2 = self.blur_pool(self.h_conv2)
-        self.h_pool2 = self.blur_pool(self.h_pool2)
-        self.h_pool2 = self.blur_pool(self.h_pool2)
-        self.h_pool2 = self.blur_pool(self.h_pool2)
 
-        n,h,w,c = self.h_pool2.get_shape()
+        print(self.h_conv3.get_shape())
+        n,h,w,c = self.h_conv3.get_shape()
         imgLength = int(h*w*c)
-        self.h_pool2_flat = tf.reshape(self.h_pool2, [-1, imgLength])
+        self.h_flat = tf.reshape(self.h_conv3, [-1, imgLength])
 
         #third layer fully Connected
         fc1_size =  int(c) * 4
         self.W_fc1 = self.weight_variable([imgLength,fc1_size])
         self.b_fc1 = self.bias_variable([fc1_size])
 
-        self.h_fc1 = self.leaky_relu(tf.matmul(self.h_pool2_flat, self.W_fc1) + self.b_fc1)
+        self.h_fc1 = self.leaky_relu(tf.matmul(self.h_flat, self.W_fc1) + self.b_fc1)
 
         #self.h_fc1 = tf.matmul(self.h_pool2_flat, self.W_fc1) + self.b_fc1
         self.h_drop = tf.nn.dropout(self.h_fc1,self.keep_prob)
@@ -151,9 +148,9 @@ class NeuralNetworkController:
         initial = tf.constant(0.2, shape=shape)
         return tf.Variable(initial)
 
-    def conv2d(self,x,W):
+    def conv2d(self,x,W,s):
         # https://www.tensorflow.org/api_docs/python/tf/nn/conv2d
-        return tf.nn.conv2d(x,W, strides=[1,1,1,1], padding='VALID')
+        return tf.nn.conv2d(x,W, strides=[1,s,s,1], padding='VALID')
     @staticmethod
     def leaky_relu(x):
         alpha = 0.001
@@ -167,9 +164,7 @@ class NeuralNetworkController:
 
     def getAction(self,img):
         img = img.reshape(-1,64,64,3)
-        return self.sess.run([self.y_conv, self.h_conv1, self.h_conv2, self.h_pool2],feed_dict={self.x: img, self.keep_prob:1.0})
-
-
+        return self.sess.run([self.y_conv, self.h_conv1, self.h_conv2, self.h_conv3],feed_dict={self.x: img, self.keep_prob:1.0})
 
     def train(self,frameTensor,actionTensor):
         return self.train_step.run(feed_dict={self.x: frameTensor, self.y_:actionTensor, self.keep_prob:1.0})
@@ -228,7 +223,7 @@ def main():
     viewSize = (64,64)
     screenSurface = pygame.display.set_mode ((1600,400))
 
-    sim = DrivingSimulator2D('track10.png',viewSize)
+    sim = DrivingSimulator2D('track8.png',viewSize)
     inputSmoother = InputSmoother(0.5)
     nn = NeuralNetworkController(viewSize)
 
