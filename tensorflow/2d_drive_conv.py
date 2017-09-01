@@ -83,7 +83,7 @@ class NeuralNetworkController:
         self.sess = tf.InteractiveSession()
         #[batches,height,width,chanels]
         self.x = tf.placeholder(tf.float32,shape=[None,64,64,3])
-        self.y_ = tf.placeholder(tf.float32,shape=[None,2])
+        self.y_ = tf.placeholder(tf.float32,shape=[None,1])
         self.keep_prob = tf.placeholder(tf.float32)
 
         #First Layer
@@ -111,7 +111,7 @@ class NeuralNetworkController:
         self.h_pool2_flat = tf.reshape(self.h_pool2, [-1, imgLength])
 
         #third layer fully Connected
-        fc1_size = int(c) * 4
+        fc1_size =  int(c) * 4
         self.W_fc1 = self.weight_variable([imgLength,fc1_size])
         self.b_fc1 = self.bias_variable([fc1_size])
 
@@ -121,10 +121,10 @@ class NeuralNetworkController:
         self.h_drop = tf.nn.dropout(self.h_fc1,self.keep_prob)
         #Fourth Layer Fully Connected Readout
         #self.W_fc2 = self.weight_variable([16*16*32,1])
-        self.W_fc2 = self.weight_variable([fc1_size,2])
-        self.b_fc2 = self.bias_variable([2])
+        self.W_fc2 = self.weight_variable([fc1_size,1])
+        self.b_fc2 = self.bias_variable([1])
 
-        self.y_conv = tf.matmul(self.h_drop, self.W_fc2) + self.b_fc2
+        self.y_conv = tf.matmul(self.h_drop, self.W_fc2) #+ self.b_fc2
 
         #self.y = tf.Print(self.y,[self.y],"Y: ")
         #y_conv = tf.Print(self.y_conv,[self.y_conv],"y_conv",summarize=5)
@@ -136,8 +136,10 @@ class NeuralNetworkController:
         #self.dist = tf.Print(self.dist, [self.dist], "Dist: ",summarize=5)
 
         self.loss = tf.reduce_mean(self.dist)
+
         #self.loss = tf.Print(self.loss,[self.loss],"Loss")
-        self.train_step = tf.train.AdamOptimizer(0.00002).minimize(self.loss)
+
+        self.train_step = tf.train.AdamOptimizer(0.0001).minimize(self.loss)
         self.sess.run(tf.global_variables_initializer())
 
 
@@ -189,29 +191,17 @@ class NeuralNetworkController:
 
 
 
-class FrameActionQueue():
-    def __init__(self,maxLength):
-        self.frameQueue = []
-        self.actionQueue = []
-        self.maxLength = maxLength
-
-    def append(self,frameMat,actionMat):
-        self.frameQueue.append(np.array([frameMat]))
-        self.actionQueue.append(np.array([actionMat]))
-
-        while len(self.frameQueue)>self.maxLength:
-            del self.frameQueue[0]
-            del self.actionQueue[0]
-
-    def getFrameTensor(self):
-        return np.concatenate(self.frameQueue,axis=0)
-
-    def getActionTensor(self):
-        return  np.concatenate(self.actionQueue,axis=0)
 
 def activation2surface(activations):
     if len(activations.shape) == 4:
         activations = activations[0,:,:,:]
+
+    activations -= activations.min()
+    wMax = activations.max()
+    if wMax > 0.00001:
+        activations = activations/wMax
+        activations *= 255
+
     h,w,c = activations.shape
     h += 1
     w += 1
@@ -222,10 +212,7 @@ def activation2surface(activations):
             i = row*gridSize + col
             if i < c:
                 act = activations[:,:,i]
-                wMax = max(abs(act.min()),abs(act.max()))
-                if wMax > 0.00001:
-                    act = act/wMax
-                    act *= 255
+
                 img[row*h:(row+1)*h-1, col*w:(col+1)*w-1] = act
 
 
@@ -241,11 +228,11 @@ def main():
     viewSize = (64,64)
     screenSurface = pygame.display.set_mode ((1600,400))
 
-    sim = DrivingSimulator2D('track8.png',viewSize)
+    sim = DrivingSimulator2D('track10.png',viewSize)
     inputSmoother = InputSmoother(0.5)
     nn = NeuralNetworkController(viewSize)
-    faq = FrameActionQueue(30)
-    rr = RandomWeightedRecal(1000)
+
+    rr = RandomWeightedRecal(4000)
 
     fps = 30
     deltaTime =  1.0/fps
@@ -275,18 +262,6 @@ arrow keys: velocity input\n\
             screenSurface.blit(surface,(0,0))
 
 
-            # W = nn.getWeights()
-            # wMax = max(abs(W.min()),abs(W.max()))
-            # if wMax > 0.0001:
-            #     W = W/wMax
-            #     W *= 127
-            # W += 128
-            #
-            # surface = pygame.Surface(W.shape[0:2])
-            # pygame.surfarray.blit_array(surface,np.transpose(W,(1,0,2))*1.0)
-            # surface = surface.convert()
-            # surface = pygame.transform.scale(surface,(400,400))
-            # screenSurface.blit(surface,(400,0))
             pygame.display.flip()
 
 
@@ -298,7 +273,7 @@ arrow keys: velocity input\n\
             #get the user control action for this frame
             x_input_user,y_input_user = inputSmoother.getSmooth()
 
-            turn = x_input_user*1.5
+            turn = x_input_user*2.0
 
 
             if nnEnabled:
@@ -318,35 +293,33 @@ arrow keys: velocity input\n\
                 screenSurface.blit(actSurf,(1200,0))
 
 
-                actX = max(action[0,0],0)
-                actY = action[0,1]
+                turn_nn = np.clip(float(action[0]),-1,1)
 
-                #print(math.sqrt(actX**2 + actY**2))
+                keystate = pygame.key.get_pressed()
+                focused = keystate[pygame.K_UP]
+                if not focused:
+                    turn += turn_nn
 
-                turn_nn = math.atan2(actY,actX)/(math.pi/4)
-                #print("[%f, %f] %f"%(actX,actY,turn_nn))
-
-                turn += turn_nn
                 turn = np.clip(turn,-1,1)
 
 
-                if abs(x_input_user) > 0.0001 :
-                    correctAction = np.array([math.cos(turn*(math.pi/4)),math.sin(turn*(math.pi/4))])
-
-                    if len(rr.weightedItemList) > 30:
+                if abs(x_input_user) > 0.0001 or focused:
+                    correctAction = np.array([turn])
+                    if len(rr.weightedItemList)%50 == 0:
+                        print(len(rr.weightedItemList))
+                    if len(rr.weightedItemList) > 40:
                         frameTensor = np.array([frameScaled])
-
                         actionTensor = np.array([correctAction])
-                        frameActionList = rr.getWeightedRandomList(29)
-                        for oldFrame, oldAction in frameActionList:
 
+                        frameActionList = rr.getWeightedRandomList(39)
+                        for oldFrame, oldAction in frameActionList:
                             frameTensor = np.append(frameTensor, oldFrame,axis=0)
                             actionTensor = np.append(actionTensor, oldAction,axis=0)
-                        print(frameTensor.shape)
+                        #print(frameTensor.shape)
                         #print(actionTensor)
                         nn.train(frameTensor,actionTensor)
 
-                    rr.addItem(abs(x_input_user),( np.array([frameScaled]), np.array([correctAction]) ))
+                    rr.addItem(abs(x_input_user)+float(focused),( np.array([frameScaled]), np.array([correctAction]) ))
 
 
             for e in pygame.event.get():
